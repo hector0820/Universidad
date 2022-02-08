@@ -1,0 +1,1992 @@
+---
+title: "MODELO DE INVERSIÓN, PARA EL CASO DE ESTADOS UNIDOS 1960 Q1 - 2020 Q4 1960 hasta el Último Trimestre de 2020"
+author: 
+- "Hector Hérnandez Camacho"
+- "Ariadna González Hernández"
+fontsize: 12pt
+
+bibliography: reference.bib
+biblio-style: apa
+output: md_document
+---
+```{r include=FALSE}
+# Fuente: "https://gist.github.com/stevenworthington/3178163"
+# Función para buscar cargar los paquetes que usaremos,
+# en caso de no encontrarlos, descargarlos
+
+ipak <- function(pkg){
+  new.pkg <- pkg[!(pkg %in% installed.packages()[, "Package"])]
+  if (length(new.pkg)) 
+    install.packages(new.pkg, dependencies = TRUE)
+  sapply(pkg, require, character.only = TRUE)
+}
+```
+
+```{r Funciones para MathJax, include=FALSE}
+# Modelo Poblacional Formato MathJax
+latex.modelo.p <- function (regresion, variables = NULL){
+  betas <- NULL
+  if (nrow(summary(regresion)$coef) > 1){
+    if (is.null(variables)){
+      for (i in (1:nrow(summary(regresion)$coef))){
+        betas <- c(betas, paste0("\\beta_{", i, "}"))
+        variables <- c(variables, paste0("x_{t", i, "}"))
+        }
+      variables[1] <- "y_{t} = "
+      } else {
+        help <- variables
+        variables <- NULL
+        for (i in (1:nrow(summary(regresion)$coef))){
+          betas <- c(betas, paste0("\\beta_{", i, "}"))
+          variables <- c(variables, paste0(help[i], "_{t}"))
+          } 
+        variables[1] <- paste0(variables[1], " = ")
+        }
+    modelo.poblacional <- paste0(variables[1], betas[1], " + ")
+    for (i in (2:nrow(summary(regresion)$coef))) {
+      modelo.poblacional <- paste0(modelo.poblacional, " ",  betas[i], " ",
+                                   variables[i], " + ")
+      }
+    modelo.poblacional <- paste0(modelo.poblacional, "\\varepsilon_{t}")
+    } else { 
+      if(is.null(variables)){
+        modelo.poblacional <- "y_{t} = \\beta_{1} + \\varepsilon_{t}"
+        } else {
+        modelo.poblacional <- paste0(variables, "_{t} = \\beta_{1} + \\varepsilon")
+        }
+      }
+  modelo.poblacional
+}
+
+# Modelo Muestral Formato MathJax
+latex.modelo.m <- function (regresion, variables = NULL){
+  
+  betas <- round(as.numeric(summary(regresion)$coef[,1]), digits = 3)
+  ee <- format(as.numeric(summary(regresion)$coef[,2]), scientific = FALSE, digits = 3 )
+  if (length(betas) == 1){
+    if (is.null(variables)){
+      modelo.muestral <- paste0("\\hat y_{t}", " {\\underset{(",
+      ee,
+      ")}{",
+      betas,
+      "}}")
+    } else {
+      modelo.muestral <- paste0("\\widehat{", variables, "}_{t} = ", " {\\underset{(",
+      ee,
+      ")}{",
+      betas,
+      "}}")
+    }
+  modelo.muestral
+  } else {
+  if (is.null(variables)){
+  
+  variables <- "\\hat y_{t} = "
+  
+  for (i in ( 2:nrow(summary(regresion)$coef))){
+    variables <- c(variables,
+                   paste0(
+                     "x_{t",
+                     i,
+                     "}"))
+    }
+  } else {
+    
+    variables[1] <- paste0("\\widehat{", variables[1], "}_{t} = ")
+    
+    for (i in (2:length(variables))){
+      
+      variables <- c(variables, paste0(variables[i], "_{t} = "))
+    
+    }
+  }
+  
+  modelo.estimado <- NULL
+  
+  if (betas[1] < 0){
+    
+    modelo.estimado <- paste0(
+      " - {\\underset{(",
+      ee[1],
+      ")}{",
+      abs(betas[1]),
+      "}}")
+    
+  } else {
+    
+    modelo.estimado <- paste0(
+      "{\\underset{(",
+      ee[1],
+      ")}{"
+      , betas[1],
+      "}}")
+    
+  }
+  
+  for (i in betas[2:length(betas)]) {
+  if (i < 0){
+    modelo.estimado <- c(modelo.estimado, paste0("- {\\underset{(", ee[which(betas == i)],
+      ")}{", 
+      abs(betas[which(betas == i)]), 
+      "}}", " ~ ", variables[which(betas == i)]))
+  } else {
+    modelo.estimado <- c(modelo.estimado, paste0("+ {\\underset{(", ee[which(betas == i)],
+                 ")}{", 
+                 abs(betas[which(betas == i)]),
+                 "}}", " ~ ", variables[which(betas == i)]))
+  }
+    
+  }
+  
+  paste0(variables[1], modelo.estimado[1],modelo.estimado[2], modelo.estimado[3])
+  }
+}
+ 
+# Para cada ...
+latex.modelo.para <- function (modelo){
+  paste0("\\forall~t=1,2,\\dots,", nrow(modelo$model))
+}
+
+# hat betas
+latex.beta.k <- function(beta = 'k', hat = FALSE){
+  
+  beta <- as.character(beta)
+  
+  if (isTRUE(hat)){
+   paste0("$\\hat\\beta_{", beta, "}$")
+  } else {
+    paste0("$\\beta_{", beta, "}$")
+  }
+}
+
+# De valores cientificos a Math
+latex.scientifict <- function(numero) {
+  if (length(numero) < 2) {
+    paste0(paste0(
+      "${", gsub("e", "* 10^{", numero), "}}$"))
+  } else {
+    for (i in numero) {
+    numero[which(numero == i)] <- paste0(
+      "${", gsub("e", "* 10^{", i), "}}$")
+    }
+  }
+}
+
+# Crea un vector de betas con o sin gorro para math
+latex.beta.n <- function(betas = 1:4, hat = TRUE) {
+  help <- NULL
+  for (i in betas){
+  help <- c(help, latex.beta.k(i, hat))
+  }
+  help
+}
+```
+
+```{r Funciones Tablas, include=FALSE}
+
+# Crea un data.frame del modelo con los CI
+# y en caso de indicarse, imprime una tabla
+CI_tabla <- function(modelo, tabla){
+  
+  sigma <- sum(modelo$residuals^2) * ((1/244)^0.5)
+  K <- length(as.vector(coeftest(modelo)[,2]))
+  T <- nrow(modelo$model)
+  
+  akaike <- log(sigma(modelo)^2) + (2 * (K/T))
+  schaworz <- log(sigma(modelo)^2) + ((K/T)*(log(T))) 
+  hannan <- log(sigma(modelo)^2) + (2*(K/T)*(log(log(T))))
+  
+  criterios <- c("Akaike", "Schwarz", "Hannan-Quinn")
+  valores <- c(akaike, schaworz, hannan)
+  col_nameT <- c("Criterio", "Resultado" )
+  
+  name <- paste0("Criterios_Informacion_", as.character(substitute(modelo)))
+  assign(name, data.frame(criterios, valores), envir = .GlobalEnv)
+  
+  if (tabla == TRUE){
+    knitr::kable(data.frame(criterios, valores), "pipe", 
+               col.names = col_nameT, 
+               digits = 2, align = c("l", "c"),
+               caption = "Criterios de información"
+               )
+  }
+  
+}
+
+# Tablas de los valores estimados de nuestro modelo
+tabla_parametros <- function(modelo, estimadores = 1:length(as.numeric(coef(modelo)))){
+  hat_betas <- NULL
+  for (i in estimadores){
+      hat_betas <- c(
+        hat_betas,
+        paste0('$\\hat{\\beta_{', estimadores[i],'}}$')
+      )
+  }
+  headers <- c('$\\hat{\\beta_{k}}$', "Valores")
+  valores <- as.numeric(coef(modelo))
+
+  knitr::kable(
+    data.frame(hat_betas, valores),
+    "pipe",
+    col.names = headers,
+    align = c("c", "r"),
+    caption = "Parámetros Estimados del Modelo"
+    )
+}
+```
+
+```{r Paquetes y Datos, include=FALSE}
+# Lista de paquetes requeridos para este script
+packages <- c(
+  "tseries",
+  "MASS",
+  "car",
+  "lmtest",
+  "sandwich",
+  "kableExtra",
+  "strucchange",
+  "MASS"
+  )
+
+# Cargar y/o instalar paquetes necesarios
+ipak(packages)
+
+# Descarga nuestros datos desde un archivo en "Google Drive"
+id <- "1mcDgADjOfVZHERuyQuTxzFs62YfT0zA2"
+datos_modelo <- read.csv(
+  sprintf("https://docs.google.com/uc?id=%s&export=download", id), sep = ";")
+```
+
+\newpage
+
+# Introducción
+
+Con el fin de demostrar que los niveles de inversión siguen la corriente teórica (La inversión está en función del producto interno bruto y de la tasa de interés) se analizó un modelo para la inversión de Estados Unidos durante el periodo 1960 Q1 - 2020 Q4, teniendo así 244 observaciones.
+
+Debido a su naturaleza, se escogió a la Formación bruta de capital fijo (FBKF) como Inversión; es la adquisición de activos producidos (incluidas las compras de activos de segunda mano), incluida la producción de dichos activos por parte de los productores para su propio uso, menos las enajenaciones. Los activos relevantes se relacionan con activos que están destinados a ser utilizados en la producción de otros bienes y servicios por un período de más de un año. El término "activos producidos" significa que solo se incluyen aquellos activos que surgen como resultado de un proceso de producción (OCDE, 2021).
+
+Los resultados obtenidos son los esperados con relación a la teoría económica citada. Sin embargo, el alcance explicativo de nuestro modelo sugerido es muy limitado. Se realizo una batería de pruebas de diagnostico para poder evaluar correctamente nuestro modelo, y pese a haberse realizado una reespesificación con una transformación robusta, no conseguimos tener los mejores estimadores lineales, insesgados y eficientes.
+
+\vfill
+
+# Marco Teórico
+
+Entendemos por inversión a la utilización de recursos de una economía destinados a la producción. De manera teórica se concibe una relación estable entre la inversión y el producto [@klein1961some]. Otro factor relevante para comprender la inversión es que esta se da en presencia de incertidumbre [@dixit2012investment]. Una forma básica de expresar el análisis de la inversión es la siguiente: 
+
+$$I = f(Y, i, K)$$ 
+
+```{r echo=FALSE}
+# Tabla
+# Descripción de las Variables
+
+var <- c("I","Y","i", "K")
+nam <- c("Inversión",
+         "Producto Interno Bruto (PIB)",
+         "La tasa de Interés Real",
+         "Stock de capital")
+nam[3] <- paste0(nam[3], footnote_marker_alphabet(1, format = "latex"))
+nam[4] <- paste0(nam[4], footnote_marker_alphabet(2, format = "latex"))
+
+data.frame(var, nam) %>% 
+  kable(caption = "Descripción de las Variables",
+      col.names = c("Símbolo", "Variable"),
+      align = c("c", "l"), 
+      format = "latex", booktabs = T, escape = F, ) %>%
+  kable_styling(latex_options = "HOLD_position") %>%
+  footnote(alphabet = c("Porcentaje que verdaderamente se paga por un préstamo o que se recibe por una inversión dentro de un periodo, una vez que se ha descontado la inflación, que provoca que el dinero pierda valor.", "Conjunto de maquinaria y equipo, equipo de transporte y edificios poseídos en determinada fecha por los agentes económicos."),
+           threeparttable = T)
+```
+
+En término generales, se puede decir que la inversión depende de los ingresos que genere la actividad económica; por tanto, la inversión es alta cuando la producción tiende a crecer y viceversa. 
+
+El otro factor del cual dependerá la inversión es la tasa de interés real. @dixit2012investment argumentan que problemas que han sido encontrados en la literatura empírica sobre la inversión surgen debido a una medición inadecuada del riesgo. Donde a mayor incertidumbre y riesgo la inversión disminuirá y viceversa, existiendo una relación inversa entre la incertidumbre y la inversión. 
+
+Esto se reafirma con la teoría neoclásica, la cual argumenta que la tasa de interés tiene un papel central en la determinación del gasto de inversión (I) y el ahorro (S). Existe una relación inversa entre la tasa de interés y la inversión; y una relación directa entre tasa de interés y el ahorro. E ahorro antecede la inversión (teoría del ahorro ex-ante), el dinero es neutro y, la flexibilidad de la tasa de interés garantiza el equilibrio entre el ahorro y la inversión. 
+
+Para el caso del Stock de capital, cuando este se incrementa el gasto de inversión aumenta. Esta variable está contemplada en la contabilidad de la formación bruta de capital fijo, como una representación de la inversión. 
+
+## Formulación del Modelo Teórico y Supuestos
+
+A continuación, mostramos las variables de interés para nuestro Modelo de Regresión Lineal General (MRLG) para el caso de inversión en Estados Unidos. Considerando a la FBKF (la formación bruta de capital Fijo) como la inversión. 
+
+
+# Modelo Económetrico
+
+A continuación, mostramos las variables de interés para nuestro Modelo de Regresión Lineal General (MDLG) para el caso de inversión en Estados Unidos. Considerando a la FBKF (la formación bruta de capital Fijo) como la inversión. 
+
+Nuestro modelo poblacional está planteado de la siguiente forma: 
+  
+```{r Modelo Poblacional Propuesto, echo=FALSE}
+# regresión
+modelo <- lm(independiente~pib+rate, data = datos_modelo)
+```
+
+$$`r latex.modelo.p(modelo, c("FBKF", "PIB", "i"))`$$
+$$`r latex.modelo.para(modelo)`$$ 
+
+En donde nuestras variables proxis para el modelo son: 
+
+```{r , echo=FALSE}
+# Tabal de las Variables
+c1 <- c("FBKF", "PIB", "i")
+c2 <- c(
+"Formación Bruta de Capital Fijo",
+"Producto Interno Bruto Real",
+"Tasa de interés Real"
+)
+c3 <- c("1960 Q1 - 2020 Q4",
+        "1960 Q1 - 2020 Q4",
+        "1960 Q1 - 2020 Q4")
+c4 <- c("2013", "2013", "2013")
+
+cn <- c("Proxi", "Nombre", "Periodicidad", "Año Base")
+
+data.frame(c1,c2, c3,c4) %>%
+  kbl(caption = "Variables del Modelo Poblacional",
+      "pipe",
+      align = c("c", "l", "c", "c"),
+      booktabs = T,
+      col.names = cn,)
+```
+
+Los signos esperados de nuestros parámetros son los siguientes: 
+
+```{r echo=FALSE}
+# Tabla
+## Signos esperados de los parámetros del modelo
+
+c2 <- c("Positivo", "Negativo")
+cn <- c("Regresor Estimado", "Signo Deseado")
+
+data.frame(latex.beta.n(2:3, FALSE),c2) %>%
+  knitr::kable("pipe", 
+               col.names = cn, 
+               align = c("c", "l"),
+               caption = "Signos Esperados para cada $\\beta_{k}$ del Modelo"
+               )
+```
+
+# Estimación y Evaluación
+
+## Planteamiento del modelo estimado
+
+Estimamos los parámetros de nuestro modelo, mediante el método de mínimos cuadrados ordinarios.
+
+```{r echo=FALSE}
+valores <- as.numeric(coefficients(modelo))
+hat.betas <- latex.beta.n(1:3, TRUE)
+
+data.frame(hat.betas, valores) %>% 
+  kbl("pipe",
+      col.names = c(latex.beta.k(hat = TRUE),"Valor"),
+caption = "Parámetros Estimados de Nuestro Modelo")
+```
+
+Modelo estimado[^eestandar] 
+
+$$`r latex.modelo.m(modelo, c("FBKF", "PIB", "i"))`$$
+$$`r latex.modelo.para(modelo)`$$
+
+[^eestandar]: Los resultados dentro de los paréntesis representan el error estándar.
+
+## Evaluación económica
+
+Los resultados obtenidos de la estimación de nuestro modelo pasan de manera satisfactoria la evaluación económica, donde el PIB tiene una relación positiva con la FBKF, mientras que la tasa de interés tiene una relación negativa con ella. 
+
+Se observa que un aumento, en una unidad, del PIB provocará un aumento en 0.06556 de la FBKF, mientras que un aumento en una unidad, de la tasa de interés, provocará una disminución de 7.501 de la FBKF.
+
+
+```{r, include=FALSE}
+# Tabla
+## Tabla de los Parámetros Estimados del Modelo
+tabla_parametros(modelo)
+```
+
+## Evaluación econométrica
+
+### Coeficiente de Determinación {#coeft}
+
+El coeficiente de determinación, o bondad del ajuste $R^{2}$ es la medida que nos ayuda a determinar si un modelo explica a la variable dependiente en función de sus variables independientes. Cuanto más cerca de 1 se sitúe su valor, mayor será el ajuste del modelo a nuestra variable dependiente (FBKF). De forma inversa, cuanto más cerca de cero, menos ajustado estará el modelo y, por tanto, menos fiable será.
+
+El cálculo de $R^{2}$ está expreso en la siguiente formula:
+
+$$
+R^{2} 	=			
+1 -
+\frac
+{\displaystyle\sum_{t=1}^{T} \hat \varepsilon^{2}}
+{\displaystyle\sum_{t=1}^{T} (y_{t}-\bar y)^{2}}
+$$
+
+El cálculo de $R^{2}$ para nuestro modelo es:
+
+```{r calculo de R2, include=FALSE}
+sumres <- sum(residuals(modelo)^2) 
+vary <- sum((modelo$model$independiente - mean(modelo$model$independiente))^{2})
+```
+
+Sin embargo, este estadístico tiene un problema, ya que diversos autores han demostrado que si agregamos a nuestro modelo, variables que no son explicativas para él, aumentara.
+
+Para evitar esto utilizamos el coeficiente de determinación ajustado $\bar R^{2}$, este considera los grados de libertad de nuestro modelo.
+
+El cálculo de $\bar R^{2}$ es: 
+
+$$
+\bar{R^{2}}
+=
+1	-
+\frac
+{T-1}
+{T-K}
+(1-R^{2})
+$$
+Nuestra $\bar R^{2}$ es de 
+
+```{r, include=FALSE}
+obm1 <- nrow(modelo$model) - 1
+gl <- nrow(modelo$model) - length(coef(modelo))
+```
+
+$$
+\bar R^{2} = 1 - 
+\frac{
+`r obm1`
+}{
+`r gl`
+}
+\cdot 
+(1 - 
+`r summary(modelo)$r.square`
+) =
+`r summary(modelo)$adj.r.square`
+$$
+
+El coeficiente de determinación ajustado explica en un 98% las variaciones de la variable dependiente con relación a las independientes. Debido a que este valor es muy cercano a 1, podemos decir que nuestro modelo alto poder explicativo para la FBKF.
+
+### Pruebas de significancia individual y conjunta
+
+#### Prueba de Significancia Individual
+
+Queremos probar que cada uno de nuestros estimadores son estadísticamente significativos usando el estadístico de prueba t-_student._ Se plantean las siguientes hipótesis
+
+$$
+\begin{aligned}
+& H_{0}: \beta_{k} = 0
+& vs &
+& H_{1}: \beta_{k} \ne 0 
+\end{aligned}
+$$ 
+$$ \forall~k=2,3 $$
+
+No se podrá rechazar nuestra hipótesis nula si nuestro estadístico de prueba *t* es mayor que $t_{\frac{\alpha}{2}}$ al nivel de significancia de $\alpha = i;~ \forall i=0.001, 0.01, 0.05, 0.1$.
+
+$$
+\begin{aligned}
+& t = 
+\left |
+\frac
+{\hat\beta_{k} - \beta_{k}}
+{ee(\hat\beta_{k})} 
+\right |
+\thicksim t_{(T-K)}
+& > & &
+& t_{\frac{\alpha}{2}}
+\end{aligned}
+$$
+
+O bien que el $\text{P-value}_{t} ~ \text{>} ~ \text{P-value}_{t_{\frac{\alpha}{2}}}$.
+
+\
+
+$$
+\begin{aligned}
+& H_{0}: \beta_{k} = 0
+& vs &
+& H_{1}: \beta_{k} \ne 0 
+\end{aligned}
+$$ 
+
+\
+
+```{r echo=FALSE}
+
+# Tabla Significancia Individual para beta 2 y 3
+cn <- c('$\\beta_{k}$', "_t_-student", "P-value")
+t <- NULL
+p <- NULL
+k <- NULL
+
+
+for (i in 2:3){
+    k <- c(k, latex.beta.k(i, FALSE))
+    t <- c(t, summary(modelo)$coef[i,3] %>% as.numeric())
+    p <- c(p, as.character(summary(modelo)$coef[i,4] %>% as.numeric() %>% 
+    format(scientific = TRUE, digits = 4)))
+} 
+
+data.frame(k,t,p) %>% 
+  knitr::kable("pipe", 
+               col.names = cn,
+               digits = 5,
+               align = c("l", "c", "c"),
+               caption = "Pruebas de Significancia Individual"
+               )
+```
+
+Todas nuestras variables son estadísticamente significativas para nuestro modelo de forma individual a un nivel de significancia de $\alpha = 0.001$; hay evidencia para rechazar nuestra hipótesis nula para $\beta_{k};~ \forall~k=2,3$ en favor de la hipótesis alternativa.
+
+#### Prueba de Significancia Conjunta
+
+Así como en nuestras pruebas de significancia individual, podemos ayudarnos de los valores de P-value para probar nuestras hipótesis. Se prueba que conjuntamente nuestros estimadores son estadísticamente significativos para nuestro modelo. 
+
+Para poder realizarla requerimos la estimación del estadístico de prueba de Fisher con K y (T-K) grados de libertad; planteamos la hipótesis nula, se desea probar que $\beta_{2}=0~\text{y}~\beta_{3}=0$ contra la hipótesis alternativa hipótesis alternativa $\beta_{2}\ne 0~\text{y/o}~\beta_{3}\ne0$; si el estadístico de prueba $F_{(K,T-K)}$ es mayor al $F_{\frac{\alpha}{2}}$ rechazamos nuestra hipótesis en favor de la alternativa.
+
+$$
+\begin{aligned}
+& H_{o}:
+\begin{matrix}
+\beta_{2} = 0 \\
+\beta_{3} = 0 \\
+\end{matrix}
+& vs &
+& H_{1}:
+\begin{matrix}
+\beta_{2} \ne 0 \\
+{\small y/o} \\
+\beta_{3} \ne 0 \\
+\end{matrix}
+\end{aligned}
+$$
+
+Una forma de calcular el valor de nuestro estadístico de prueba *F* es a través de una regresión auxiliar(que llamaremos M2), donde únicamente solo se estima nuestra variable independiente con `r latex.beta.k(1)` en la parte determinista del modelo. 
+
+```{r include=FALSE}
+modelo.m2 <- lm(independiente~1, data = datos_modelo)
+```
+
+$$
+M2:~~`r latex.modelo.p(modelo.m2, c("FBKF"))`
+$$
+_Resultados de Nuestra Prueba de Significancia_
+
+Estimamos M2, de tal que:
+
+$$M2: ~~~ `r latex.modelo.m(modelo.m2, "FBKF")`$$
+
+Usando M2 y los resultados de nuestra primera regresión, calculamos $F_{\small (2,241)}$, en donde $GL_{M2}$ y $GL_{M3}$ son los grados de libertad de primera y segunda regresión respectivamente.
+
+$$
+F(2,241) = 
+\displaystyle \frac{
+\displaystyle \frac{
+\displaystyle  \sum_{t=1}^{244} \hat \theta_{t}^{\small 2}
+-
+\displaystyle \sum_{t=1}^{244} \hat \varepsilon_{t}^{\small 2}
+}{GL_{M2} - GL_{M3}}
+}{
+\displaystyle \frac{
+\displaystyle \sum_{t=1}^{244} \hat \varepsilon_{t}^{\small 2}
+}{GL_{M1}}
+}
+$$
+
+```{r, include=FALSE}
+resm <- sum(residuals(modelo)^2)
+resm2 <- sum(residuals(modelo.m2)^2)
+glm <- nrow(modelo$model) - length(coef(modelo))
+glm2 <- nrow(modelo.m2$model) - length(coef(modelo.m2))
+f <- ((resm2 - resm)/(glm2 - glm)) / (resm/glm)
+```
+
+Sustituyendo los valores:
+
+$$
+F(2,241) = 
+\frac
+{\frac{
+`r resm2`
+-
+`r resm`
+}{
+`r glm2`
+-
+`r glm`
+}}
+{\frac{
+`r resm`
+}{
+`r glm`
+}}
+=
+`r f`
+$$
+
+```{r echo=FALSE}
+# Tabla
+## Calculo del estadístico de prueba F
+
+modelo.f <- as.numeric(summary(modelo)$f)
+modelo.f.value <- pf(modelo.f[1],modelo.f[2], modelo.f[3],
+  lower.tail=FALSE) %>% format(scientific = TRUE, digits = 4)
+  
+cn <- c('$F_{(2,241)}$', "P-value")
+
+data.frame(as.numeric(modelo.f[1]), modelo.f.value) %>% 
+  knitr::kable("pipe", 
+             col.names = cn, 
+             align = c("c", "c"),
+             caption = "Estadístico F de Fisher"
+             )
+```
+
+Con relación a los valores presentados en la tabla anterior, a un nivel de significancia de $\alpha = 0.001$, se rechaza la hipótesis nula en favor de nuestra hipótesis alternativa; nuestras variables, en su conjunto, son estadísticamente significativas para explicar a nuestro modelo.
+
+```{r, include=FALSE}
+CI_tabla(modelo, FALSE)
+```
+
+### Pruebas de diagnóstico
+
+[//]: # Del libro de Econometria con R encontramos información para realizar las pruebas de normalidad, de heterocedasticidad y hocedasticidad.
+
+\nocite{econometriar}
+
+Que nuestro modelo cumpla con los supuestos tanto de la parte aleatoria (Gauss Markov) como de la parte determinista, es muy importante, ya que, de no hacerlo, tiene consecuencias e implicaciones sobre nuestro modelo.
+
+**Supuesto de Normalidad**[^normal]
+Los residuos se distribuyen de una forma normal estándar con media 0 y varianza $\sigma^2$.
+
+[^normal]: Dentro de este supuesto están implícitos las supuestos Gauss Markov I y II; el valor esperado de los errores condicionado a las X es cero, $E[\varepsilon|X] = 0$; la varianza condicionada a las X es constante $VAR[\varepsilon|X] = 0$, supuesto de homocedasticidad. 
+
+$$
+\varepsilon ~ \thicksim ~ N(0, \sigma^{2})
+$$
+Si este supuesto no se cumple no es posible que realicemos inferencia estadística sobre el modelo, ya que no podremos obtener los estadísticos necesarios para las pruebas de significancia.
+
+**Supuesto de Homocedasticidad**
+
+Si la varianza de los errores, condicionada a las X, no es constante ni igual a $\sigma^{2}$; nuestro modelo presentara heterocedasticidad. Si se tiene heterocedasticidad los estimadores obtenidos pormétodo de MCO serán insesgado, pero no eficientes. 
+
+**Supuesto de no autocorrelación.**
+
+Supone que no existe una relación lineal entre los errores; ya sea en diferentes momentos (para datos de series de tiempo) o para diferentes individuos (para datos de corte transversal). No existe autocorrelación cuando: 
+$$
+Cov(\varepsilon_{t}, \varepsilon_{j}|X)	=
+\frac
+{Cov(\varepsilon_{t}, \varepsilon_{j}|X)}
+{\sqrt{\sigma_{t}\sigma_{j}}} 		=
+\frac
+{0}
+{\sqrt{\sigma_{t}\sigma_{j}}}		=
+0
+$$
+$$\forall~t=1,2,\dots,T;~j =1,2,\dots,J; t \ne j$$
+**Permanencia Estructural**
+
+los parámetros no cambien a través del tiempo o de las observaciones.
+
+$$
+\beta_{k_{_{t}}} = \beta_{k_{_{t+1}}} = \dots = \beta_{k_{_{T}}}
+$$
+
+$$
+{\small \forall ~ t = 1,2,\dots, T; k = 1,2,\dots, K}
+$$
+
+**Especificación Correcta**
+
+Que nuestro modelo no este sobreparametrizado, es decir que, nuestro modelo incluye variables independientes que no son importantes en la determinación de la variable dependiente; subparametrizado, no se están incluyendo variables independientes que son importantes para explicar a la variable dependiente. 
+
+Para comprobar que nuestro modelo cumple con estos supuestos, realizaremos las pruebas de diagnóstico. Los resultados de dichas pruebas nos permitirán tomar decisiones sobre la formulación de nuestro modelo, sus alcances y limitaciones.
+
+#### Prueba de Normalidad
+
+Uno de los supuestos más fuertes de nuestro modelo es el de normalidad; suponemos que nuestros errores se distribuyan como una función normal nos permite calcular los estadísticos *t*-student, para nuestras pruebas de significancia individual, y *F* de Fisher, para la prueba de significancia conjunta.
+
+Una de las características de que una variable se distribuye como una función normal es que su tercer momento muestral sea 0, $S[X]=0$, y que su cuarto momento muestral sea 3, $C[X]=3$; tal que $M^{3} = 0$ y $M^{4}=3$.
+
+$$
+\begin{aligned}
+M^{n} =& \frac{1}{T} \sum_{t=1}^{T} (X_{t} - \hat \mu)^{n} \\
+& {\small \forall ~ n = 3,4}
+\end{aligned}
+$$
+
+Podemos analizar el tamaño de nuestra muestra, y si esta es muy grande, por el teorema del límite central, podemos decir que nuestros coeficientes de nuestros estimadores son asintóticamente normales con media $\beta_{k}~\forall~k=1,\dots,K$ \cite{gujarati2010econometria}.
+
+Es necesario verificar en nuestro modelo si se cumple el supuesto de normalidad utilizando realizando la prueba *Jarque-Bera*.
+
+##### Prueba Jarque-Bera {#JBt}
+
+Se prueba simultáneamente que se cumplen el $\text{3}^{\text{er}}$ y $\text{4}^{\text{to}}$ muestro como indicó previamente.
+
+$$
+\begin{aligned}
+& H_{0} : 
+\begin{matrix}
+S = 0 \\    
+C = 3 
+\end{matrix}
+&& vs &
+& H_{1} : 
+\begin{matrix}
+S \ne 0 \\
+{\small y / o} \\
+C \ne 3 
+\end{matrix}
+\end{aligned}
+$$
+
+El estadístico de prueba bajo $H_{0}$ es
+
+$$
+JB = T
+\left [ 
+\frac{\widehat{cs}^{2}}{6}
++
+\frac{(\widehat{cc} - 3)^{2}}{24}
+\right]
+\thicksim
+{\huge \chi}_{2}^{2}
+$$
+
+Primero calculamos $\text{3}^{\text{er}}$ y $\text{4}^{\text{to}}$ momento muestral:
+
+```{r, Caculos de la Prueba Jarque-Bera, include=FALSE}
+# 
+modelo.sigma.mv <- (sum(residuals(modelo)^2)*(1/244))^{0.5}
+modelo.sesgo <- sum(residuals(modelo)^3) * (1/244)
+modelo.curtosis <- sum(residuals(modelo)^4) * (1/244)
+modelo.cs <- modelo.sesgo / (modelo.sigma.mv^3)
+modelo.cc <- modelo.curtosis / (modelo.sigma.mv^4)
+
+modelo.JB <- 244*(((modelo.cs)^2)/6 + ((modelo.cc-3)^2)/24)
+modelo.JB.p <- format(as.numeric(jarque.bera.test(residuals(modelo))[3]), scientific = TRUE, digits = 4)
+```
+
+$$
+\begin{aligned}
+\hat s = \frac{1}{244} \sum_{t=1}^{244} \hat \varepsilon_{t}^{3} = 
+`r modelo.cs`
+& & & & 
+\hat c = \frac{1}{244} \sum_{t=1}^{244} \hat \varepsilon_{t}^{4} =
+`r modelo.cc`
+\end{aligned}
+$$
+
+Los coeficientes de sesgo, $\hat{cs}$, y de cur´tosis, $\hat{cc}$, respectivamente.
+
+$$
+\begin{aligned}
+\widehat{cs} = \frac{\hat s}{(\sqrt{\hat{\sigma}^{2}})^{3}} =
+\frac{
+`r modelo.sesgo`
+}{(
+`r modelo.sigma.mv`
+)^{3}} = 
+`r modelo.cs`
+\\
+\\
+\widehat{cc} = \frac{\hat c}{(\sqrt{\widehat{\sigma}^{2}})^{4}} =
+\frac{
+`r modelo.curtosis`
+}{(
+`r modelo.sigma.mv`
+)^{4}} = `r 
+modelo.cc`
+\end{aligned}
+$$
+
+El estadístico *JB* de nuestro es
+
+$$
+JB = 244
+\left [ 
+\frac{(`r modelo.cs`)^{2}}{6}
++
+\frac{(`r modelo.cc` - 3)^{2}}{24}
+\right] = `r modelo.JB`
+$$
+
+Nuestro JB = `r modelo.JB`, con $GL = 2$ y un $\text{P-value} = `r modelo.JB.p`$. Por lo que se rechaza la hipótesis nula en favor de la alternativa, los residuos de nuestro modelo no se distribuye como una función normal.
+
+#### Prueba de Especificación Correcta
+
+A fin de comprobar si tenemos un problema de especificación realizaremos la prueba RESET.
+
+##### Prueba RESET {#RESET}
+
+Para calcular el estadístico de prueba realizamos una regresión auxiliar con los valores ajustados de nuestro modelo a la potencia n, tal como se ve a continuación. 
+
+$$
+\begin{aligned}
+FBKF_{t}
+= 
+  \beta_{1} 
++ \beta_{2}~PIB_{t} 
++ \beta_{3}~i_{t} 
++ \sum_{n=2}^{4} \alpha_{n}~\widehat {FBKF_{t}^{n}}
++ \nu_{t}
+\end{aligned}  
+$$
+
+$$\forall~t=1,2,\dots,244$$
+
+Para la selección del numero de $\alpha_{n}$ para calcular el estadístico de prueba _F_, podemos ayudarnos de los criterios de información; para seleccionar el modelo que nos permita mantener el mayar numero de grados de libertad posibles.  
+
+Diversos teóricos han confirmado que el número de $\alpha_{n}$ para datos con periodicidad trimestral es de $\alpha_{n}; n=2,3,4$, sin embargo, haremos las regresiones para confirmar tal información. 
+
+
+```{r include=FALSE}
+datos_modelo$independiente2 <- fitted(modelo)^2
+datos_modelo$independiente3 <- fitted(modelo)^3
+datos_modelo$independiente4 <- fitted(modelo)^4
+
+modelo.reset2 <- lm(independiente~pib+rate+independiente2, data = datos_modelo)
+modelo.reset3 <- lm(independiente~pib+rate+independiente2+independiente3, data = datos_modelo)
+modelo.reset4 <- lm(independiente~pib+rate+independiente2+independiente3+independiente4, data = datos_modelo)
+
+CI_tabla(modelo.reset3, tabla = FALSE)
+CI_tabla(modelo.reset4, tabla = FALSE)
+CI_tabla(modelo.reset2, tabla = FALSE)
+```
+
+```{r echo=FALSE}
+# Tabla
+## Comparación de los críterios de información
+## para la prueba RESET
+alphas <- data.frame(
+  Criterios_Informacion_modelo.reset2[,2],
+  Criterios_Informacion_modelo.reset3[,2],
+  Criterios_Informacion_modelo.reset4[,2], 
+  row.names = c("Akaike", "Schwarz", "Hannan-Quinn")
+)
+n <- c("$\\text{Hasta}~ \\alpha_{2}$",
+       "$\\text{Hasta}~ \\alpha_{3}$",
+       "$\\text{Hasta}~ \\alpha_{4}$")
+
+knitr::kable(alphas, "pipe", col.names = n, caption = "Tabla de los Criterios de Información de Nuestro Modelos Auxiliares")
+```
+
+El modelo auxiliar para $\alpha_{2}$ hasta $\alpha_{4}$ es el que tiene los valores más pequeños de los criterios de información, por lo que vamos a evaluar nuestra hipótesis con él.
+
+$$
+\begin{aligned}
+& H_{o}:
+\begin{matrix}
+\alpha_{2} = 0 \\
+\alpha_{3} = 0 \\
+\alpha_{4} = 0 \\
+\end{matrix}
+& vs &
+& H_{1}:
+\begin{matrix}
+\alpha_{2} \ne 0 \\
+{\small y/o} \\
+\alpha_{3} \ne 0 \\
+{\small y/o} \\
+\alpha_{4} \ne 0 \\
+\end{matrix}
+\end{aligned}
+$$
+
+```{r echo=FALSE}
+f <- as.numeric(reset(modelo,2:4)$statistic[1])
+v <- reset(modelo,2:4)$p.value %>% format(scientific = TRUE, digits = 4) 
+v <- latex.scientifict(v)
+
+
+knitr::kable(
+  data.frame(f, v),
+  "pipe", 
+  col.names = c("$F_{\\frac{3}{238}}$",
+                "P-value"),
+  caption = "Estadístico de Prueba F")
+```
+
+La prueba nos da evidencias para rechazar la hipótesis nula en favor de la alternativa dado que el P-value de nuestro estadístico es mayor que al nivel de significancia de 10%; por lo que podemos decir que no tenemos una correcta especificación del modelo.
+
+#### Prueba de Multicolinealidad
+
+##### Efecto Tail {#Tail}
+
+El efecto Tail mide como el coeficiente de determinación de nuestro modelo estimado está afectado por el coeficiente de determinación de $k; \forall k=1,2,\dots,K$ regresiones auxiliares.
+
+$$
+  R_{Th}^{2} 
+= 
+  R^{2}
+-
+  \sum_{k=2}^{K} (R^{2} - R_{k}^{2})
+$$
+
+Se estiman estas regresiones auxiliares de la variable dependiente contra los k parámetros menos uno de ellos:
+
+$$
+\begin{aligned}
+& Tail_{1}: &
+&{FBKF}_{t}  = 
+\alpha_{1} + \alpha_{2}~PIB_{t} +\varepsilon_{t} \\
+& Tail_{2}: &
+&{FBKF}_{t} = 
+\alpha_{1} + \alpha_{2}~i_{t} +\varepsilon_{t} \\
+\end{aligned}
+$$
+
+$$ \forall~t=1,2,\dots,244 $$
+
+```{r echo=FALSE}
+modelo.tail.pib <- lm(independiente~pib, data = datos_modelo)
+modelo.tail.i <- lm(independiente~rate, data = datos_modelo)
+
+modelo.tail.r.square <- round(c(
+  summary(modelo.tail.pib)$r.square, 
+  summary(modelo.tail.i)$r.square), 3)
+
+name <- c("$R_{2}^{2}$", "$R_{3}^{2}$")
+
+knitr::kable(data.frame(cbind(name, modelo.tail.r.square)),
+             "pipe",
+             col.names = c("$R_{k}^{2}$", "Valor"),
+             caption = "Lista de las $R_{k}^{2}$"
+)
+```
+
+Al realizar la estimación de $R_{Th}^{2}$, observamos que el valor es cercano a cero, por tanto, existe evidencia de no mulcicolinealidad en nuestro modelo.
+
+```{r Valor de la Theil R2, include=FALSE}
+modelo.R2_Th<- summary(modelo)$r.square - (
+  summary(modelo)$r.square - summary(modelo.tail.pib)$r.square +
+    summary(modelo)$r.square - summary(modelo.tail.i)$r.square)
+```
+
+$$
+\begin{aligned}
+R_{Th}^{2} &= `r summary(modelo)$r.square` \\
+&- 
+\left ( 
+(`r summary(modelo)$r.square` - `r summary(modelo.tail.pib)$r.square`) 
++
+(`r summary(modelo)$r.square` - `r summary(modelo.tail.i)$r.square`)
+\right ) \\
+&= `r modelo.R2_Th`
+\end{aligned}
+$$
+
+##### Factor de Inflación Varianza {#viff}
+
+El factor de inflación varianza (VIF) mide como la varianza incrementa, en la estimación de mínimos cuadrados ordinarios, por la colinealidad entre nuestras las variables:
+
+$$
+VIF = \frac{1}{1-R_{k}^{2}}
+$$
+
+Para calcular el VIF necesitamos estimar dos regresiones auxiliares:
+
+$$
+\begin{aligned}
+& \text{VIF}_{1}: &
+PIB_{t}  &= 
+\alpha_{1} + \alpha_{2}~i_{t} +\varepsilon_{t} \\
+& \text{VIF}_{2}: &
+i_{t} &= 
+\alpha_{1} + \alpha_{2}~PIB_{t} +\varepsilon_{t} \\
+\end{aligned}
+$$
+
+$$ \forall~t=1,2,\dots,244 $$
+
+```{r echo=FALSE}
+# Función de R para calcular el VIF
+# vif(modelo)
+
+knitr::kable(data.frame(
+  as.numeric(vif(modelo))[1],
+  as.numeric(vif(modelo))[2]),
+  "pipe",
+  row.names = FALSE,
+  col.names = c("$R_{VIF_{1}}^{2}$", "$R_{VIF_{2}}^{2}$")
+)
+```
+
+Si el valor es mayor de 10, normalmente para algunos autores 5, se considera que existe multicolinealidad; observamos que los resultados no muestran existencia de multicolinealidad. [@econometriar].
+
+#### Prueba de Homocedasticidad
+
+##### Prueba Breush-Pagan-Godfrey {#BPGt}
+
+Realizamos la prueba Breush-Pagan-Godfrey para verificar que nuestros residuos, $\hat \varepsilon^{2}$, son homocedasticos. Se plantea y estima la siguiente regresión auxiliar. 
+
+$$
+  \hat \varepsilon_{t}^{2}
+=   
+  \alpha_{1}
++
+  \alpha_{2}~PIB_{t}
++
+  \alpha_ {3}~i_{t}
++
+  \nu_{t}
+$$
+$$\forall~t=1,2,\dots,244 $$
+$$
+\begin{aligned}
+& H_{0} : 
+\begin{matrix}  
+\alpha_{2} = 0 \\   
+\alpha_{3} = 0  
+\end{matrix}
+&& vs &
+& H_{1} : 
+\begin{matrix}
+\alpha_{2} \ne 0 \\
+{\small y / o} \\
+\alpha_{3} \ne 0 \\ 
+\end{matrix}    
+\end{aligned}
+$$
+
+
+
+```{r echo=FALSE}
+modelo.bptest.f <- as.numeric(bptest(modelo)[1])
+modelo.bptest.p <- format(as.numeric(bptest(modelo)$p.value), scientific =TRUE, digits = 4)
+
+p <- latex.scientifict(modelo.bptest.p)
+
+knitr::kable(data.frame(modelo.bptest.f,p), "pipe",
+             col.names = c("$F_{\\small (2,241)}$",
+                           "P-value"))
+```
+
+El valor de nuestro estadístico de prueba $F_{(2,241)} = `r as.numeric(bptest(modelo)[1])`$, con un $\text{P-value} = `r 1.32e-11`$, por lo que se rechaza la hipótesis nula en favor de la alternativa; existe evidencia que señala heterocedasticidad en el modelo.
+
+#### Prueba de Autocorrelación
+
+##### Prueba Durbin-Watson {#dwww}
+
+El estadístico Durbin-Watson prueba la autocorrelación de primer orden en nuestro modelo. Así como en las pruebas anteriores, nos apoyamos de una regresión auxiliar para calcular el valor de nuestro estadístico DW.  
+
+$$
+\varepsilon_{t} = \theta_{0} + \theta_{1}~\varepsilon_{t-1} + \nu_{t}
+$$
+$$\forall~t=2,3,\dots,T$$
+
+En donde las hipótesis a probar son la no existencia de autocorrelación de primer orden, que $\theta_{1} = 0$, o en caso contrario la existencia de autocorrelación; que $\theta_{1} \ne 0$.
+
+$$
+H_{0}: \theta_{0} = 0
+~~~~~~
+vs
+~~~~~~
+H_{1}: \theta_{1} \ne 0
+$$
+
+El estadístico a utilizar planteado por Durwin - Watson:
+
+$$
+DW = \frac
+{\displaystyle \sum_{t=2}^{T} (\hat \varepsilon_{t} -\hat \varepsilon_{t-1})^{2}}
+{\displaystyle \sum_{t=1}^{T}\varepsilon_{t}^{2}} 
+= 
+2(1-\hat \theta_{1})
+$$
+
+Si $\theta_{1} = 0$, es estadístico DW = 2, y no se rechaza la hipótesis nula.
+\hfill\break
+
+Si $\theta_{1} = 1$, se rechaza la hipótesis nula y existe evidencia de correlación positiva. \hfill\break
+
+Si $\theta_{1} \approx 0$, se rechaza la hipótesis nula y existe evidencia de correlación negativa. \hfill\break
+
+Realizamos la estimación del estadístico DW, y observamos que es muy cercano a 0, por lo que se rechaza la hipótesis nula en favor de la hipótesis alternativa; existe autocorrelación en nuestro modelo. \hfill\break
+
+```{r echo=FALSE}
+DW <- as.numeric(dwtest(modelo)$statistic)
+DW.p <- as.numeric(dwtest(modelo)$p.value) %>% format(scientifict = TRUE, digits = 4)
+DW.p <- latex.scientifict(DW.p) 
+
+data.frame(DW, DW.p) %>% 
+  kbl(format = "pipe",col.names = c("DW", "P-value"), caption = "Estadístico de Prueba Durwin - Watson")
+```
+
+#### Prueba de Permanencia Estructural
+
+En Estados Unidos, a finales del 2008 se desato la crisis financiera. Sin embargo, esta crisis que se venía desarrollando desde mediados de 2007 no afecto sensiblemente al curso de la economía mundial hasta mediados de 2008, la cual continuó manteniendo altas tasas de crecimiento superiores a 5% anual [@Titlepag33:online] con niveles récord de inversión internacional directa cercanos al 30% anual anterior [@Titlepag34:online]. El nuevo núcleo dinámico de la economía mundial (sector electrónico-informático) mantenía altas tasas de crecimiento al momento del estallido.
+
+Analizando la serie de tiempo obtenida para la FBKF de Estados Unidos, podemos observar un notorio cambio estructural en 2010, donde la FBKF tiene una disminución como resultado de la crisis financiera.
+
+```{r Serie de Tiempo de 1960 a 2020, echo=FALSE}
+modelo.ts <- ts(datos_modelo, start = c(1960, 1), end = c(2020,4), frequency = 4 )
+
+# Periodo observado que tiene el cambio estructural 
+min_05_10 <- window(modelo.ts, 2005, c(2010, 1))
+
+wmin <- which.min(min_05_10[,1])
+tmin <- time(min_05_10)[wmin]
+nmin <- min(min_05_10[,1])
+
+anio <- floor(tmin)
+
+# Plot de 2005 a 2020
+ts.plot(modelo.ts[,1], ylab = "FBKF", xlab = NULL, main = "Serie de Tiempo de la FBKF en Estados Unidos 1960 - 2020")
+points.default(tmin, nmin, pch = 12, col = "red")
+text(tmin, nmin, anio, cex = .75, pos = 1)
+```
+
+##### Chow Breakpoint {#chowbp}
+
+La prueba consiste en realizar dos estimaciones con dos modelos auxiliares que nos permitan probar que nuestros parámetros no cambian a través del tiempo, o a de las observaciones. Se de contar con una justificación para decir por que la serie presenta cambios estructurales, así como contar con suficiente información para estimar dichas regresiones; de no tener la suficiente información se utiliza la prueba Chow Forecast. 
+
+De nuestro modelo poblacional:
+
+$$
+`r latex.modelo.p(modelo, c("FBKF", "PIB", "i"))`
+$$ 
+
+Construimos dos modelos auxiliares; uno desde la primer observación hasta el momento $T_{0}$, es el periodo que usaremos para probar nuestras hipótesis.
+
+$$
+FBKF_{t} =
+\beta_{1}^{\small {1^{\small er}}} +
+\beta_{2}^{\small {1^{\small er}}}~PIB_{t} +
+\beta_{3}^{\small {1^{\small er}}}~i_{t} +
+\varepsilon_{t}
+$$
+$$\forall~t=1,2,\dots,T_{0}$$
+
+y el segundo modelo comienza en el momento el momento $T_{0}$, hasta hasta el último de nuestros datos $T$.
+
+$$
+FBKF_{t} =
+\beta_{1}^{\small {2^{\small do}}} +
+\beta_{2}^{\small {2^{\small do}}}~PIB_{t} +
+\beta_{3}^{\small {2^{\small do}}}~i_{t} +
+\varepsilon_{t}
+$$
+$$\forall~t=T_{0},T_{0} + 1,\dots,T$$
+
+Nuestro objetivo es poder realizar la estimación con una sola regresión, planteamos de forma matricial nuestro modelo; en donde nuestra $T_{\small 0} = 191$, que corresponde al tercer trimestre del año 2007.
+
+$$
+\begin{aligned}
+\begin{bmatrix}
+FBKF_{1} \\
+FBKF_{2} \\
+\vdots \\
+FBKF_{191} \\
+FBKF_{192} \\
+\vdots \\
+FBKF_{244} \\
+\end{bmatrix}
+= 
+  \begin{bmatrix}
+1 & PIB_{1} & i_{1} & 0 & 0 & 0 \\
+1 & PIB_{2} & i_{2} & 0 & 0 & 0 \\
+\vdots & \vdots & \vdots & \vdots & \vdots & \vdots \\
+0 & 0 & 0 & 1 & PIB_{191} & i_{191} \\
+0 & 0 & 0 & 1 & PIB_{192} & i_{192} \\
+\vdots & \vdots & \vdots & \vdots & \vdots & \vdots \\
+0 & 0 & 0 & 1 & PIB_{244} & i_{244} \\
+\end{bmatrix}
+\begin{bmatrix}
+\beta_{1}^{\small {1^{\small er}}} \\
+\beta_{2}^{\small {1^{\small er}}} \\
+\beta_{3}^{\small {1^{\small er}}} \\
+\beta_{1}^{\small {2^{\small do}}} \\
+\beta_{2}^{\small {2^{\small do}}} \\
+\beta_{3}^{\small {2^{\small do}}} \\
+\end{bmatrix}
+\end{aligned}
+$$
+
+Una vez que se ha escrito nuestro modelo para todos nuestros parámetros, $\beta_{1}, \beta_{2}$ y $\beta_{3}$, podemos realizar la estimación de este modelo.
+
+$$
+FBKF_{t} =
+\beta_{1}^{\small {1^{\small er}}} +
+\beta_{2}^{\small {1^{\small er}}}~PIB_{t} +
+\beta_{3}^{\small {1^{\small er}}}~i_{t} +
+\beta_{1}^{\small {2^{\small do}}} +
+\beta_{2}^{\small {2^{\small do}}}~PIB_{t} +
+\beta_{3}^{\small {2^{\small do}}}~i_{t} +
+\alpha_{t}
+$$
+
+$$\forall~t=1, 2,\dots,244$$
+
+Donde buscamos probar que existe permanencia estructura; donde las diferencias de nuestro betas del primer y segundo periodo son nulas.
+
+$$
+\begin{aligned}
+& H_{\tiny 0}:
+\begin{matrix}
+\beta_{1}^{\small {1^{\small er}}} - \beta_{1}^{\small {2^{\small do}}} = 0 \\
+\beta_{2}^{\small {1^{\small er}}} - \beta_{2}^{\small {2^{\small do}}} = 0 \\
+\beta_{3}^{\small {1^{\small er}}} - \beta_{3}^{\small {2^{\small do}}} = 0 \\
+\end{matrix}
+& vs &
+& H_{\tiny 1}:
+\begin{matrix}
+\beta_{1}^{\small {1^{\small er}}} - \beta_{1}^{\small {2^{\small do}}} \ne 0 \\
+{\tiny {y/o}} \\
+\beta_{2}^{\small {1^{\small er}}} - \beta_{2}^{\small {2^{\small do}}} \ne 0 \\
+{\tiny {y/o}} \\
+\beta_{3}^{\small {1^{\small er}}} - \beta_{3}^{\small {2^{\small do}}} \ne 0 \\
+\end{matrix}
+\end{aligned}
+$$
+
+```{r Calculo de la prueba Chow, include=FALSE}
+modelo.chow <- sctest(datos_modelo$independiente~datos_modelo$pib+datos_modelo$rate, type = "Chow", point = 191)
+modelo.chow.f <- as.numeric(modelo.chow$statistic)
+modelo.chow.p <- pf(modelo.chow.f, 3, 238, lower.tail = FALSE) %>% format(scientific = TRUE, digits = 4)
+```
+
+El calculo de nuestro estadístico de prueba $F_{\small (3, 238)} = `r modelo.chow.f`$, con un $\text{P-value} = `r modelo.chow.p`$ nos provee de evidencia para rechazar nuestra hipótesis nula en favor de la alternativa; existe un cambio estructural del periodo descrito.
+
+```{r echo=FALSE}
+knitr::kable(data.frame(modelo.chow.f, modelo.chow.p), "pipe",
+             col.names = c("$F_{\\small (2,241)}$",
+                           "P-value"))
+```
+
+\newpage
+
+# Reespecificación
+
+Nuestras pruebas de diagnostico indican que no existe normalidad, que nuestra especificación no es correcta, y que existen cambios estructurales en nuestro modelo. Por tanto, hay cierto indicio que la no normalidad sea resultado de la incorrecta especificación, y esto debe probarse.
+
+Por tal motivo que se realiza una transformación en nuestras variables que nos permita presentar nuestro modelo de una forma adecuada, y con ello probar si nuestro modelo puede ser explicativo de la FBKF para Estados Unidos.
+
+## Planteamiento del modelo respecificado
+
+### Aspectos Generales de la Transformación Cox - Box[^3]
+
+[^3]: Greene, W. H. (2017). Econometric Analysis (5a ed.). Pearson, p. 492-501.
+
+La transformación que realizamos a nuestras variables son el resultado de esta transformación, busca un $\lambda$ que maximice nuestra función $FBKF_{t}^{\lambda}$.
+
+$$
+FBKF^{\lambda} = \beta^{'} X^{\lambda} + \varepsilon
+$$
+
+tal que
+
+$$
+FBKF^{\lambda} = 
+\begin{cases}
+\frac
+{FBKF^{\lambda - 1}}
+{\lambda} & \lambda \ne 0\\
+log~(FBKF) & \lambda = 0
+\end{cases}
+$$
+
+Tenemos una matriz Jacobina $\frac {\partial \varepsilon} {\partial FBKF} = FBKF^{\lambda - 1}$, en donde la función de la logmáxima verosimilitud para el modelo se distribuye como una función normal.
+
+$$
+\text{ln}~L = - \frac{T}{2}~\text{ln}(2\pi) - (\lambda - 1) \sum_{t=1}^{T} \text{ln} ~ FBKF_{t} - \frac{1}{2\sigma^{2}} \sum_{t=1}^{T} (FBKF_{t} - \beta^{'}X_{i}^{\lambda})
+$$
+
+Las estimaciones de máxima verosimilitud de $\lambda$ y $\beta$ maximizan esta función; el estimador de $\sigma^{2}$ es el estimador usual de mínimos cuadrados ordinarios ($\frac{1}{T-K} \sum_{t}^{T} \hat \varepsilon^{2}$). Usaremos solamente una búsqueda de $\lambda$ para un valor dado de él, y el estimador de máxima verosimilitud de $\beta$ será el de mínimos cuadrados usando los datos transformados.
+
+Usaremos el estimador BHHH (Berndt, Hall, Hall, Hausman) de covarianzas asintónticas para la mayor verosimilitud.
+
+$$
+\begin{bmatrix}
+\frac
+{\partial \text{ln} L}
+{\partial \beta} \\
+\frac
+{\partial \text{ln} L}
+{\partial \lambda} \\
+\frac
+{\partial \text{ln} L}
+{\partial \sigma^{2}}
+\end{bmatrix}
+=
+\sum_{t=1}^{T}
+\begin{bmatrix}
+\frac
+{\varepsilon X_{t}^{\lambda}}
+{\sigma^{2}} \\
+\text{ln}~FBKF_{t} - \frac{\varepsilon_{t}}{\sigma^{2}}
+\left [ 
+\frac
+{\partial FBKF_{t}^{\lambda}}
+{\partial \lambda}
+- \displaystyle \sum_{k=1}^{K} \beta_{k}
+\frac
+{\partial X_{ik}^{\lambda}}
+{\partial \lambda}
+\right ] \\
+\frac
+{1}
+{2\sigma^{2}}
+\left [ 
+\frac
+{\varepsilon_{t}^{2}}
+{\sigma^{2}}
+- 1
+\right ]
+\end{bmatrix}
+$$
+
+En donde
+
+$$
+\begin{aligned}
+\frac{
+\partial 
+\left ( 
+FBFK^{\lambda} - 1
+\right ) / \lambda}
+{\partial \lambda}
+& =
+\frac
+{\lambda FBKF^{\lambda}~\text{ln}~FBKF-(FBKF^{\lambda} - 1)}
+{\lambda^{2}} \\
+& =
+\frac
+{1}
+{\lambda}
+{FBKF^{\lambda}~\text{ln}~FBFK - FBKF^{\lambda}}
+\end{aligned}
+$$
+
+En donde los estimadores de las covarianzas asintóticas para la mayor verosimilitud provienen de estimadores no lineales del método de máxima verosimilitud.
+
+Los resultados para nuestra estimación de $\lambda$ en nuestro modelo, están en la formula a continuación.
+
+$$
+\begin{aligned}
+FBKF_{t} &= \beta_{1} + \beta_{2} PIB_{t}^{\lambda} + \beta_{3} i_{t}^{\lambda} + \varepsilon_{t}\\
+& \forall~t=1,2,\dots,244
+\end{aligned}
+$$
+
+```{r include=FALSE}
+# Transformación Box - Cox 
+# library(MASS)
+bc <- boxcox(modelo, lambda = seq(0.5, 0.7, by = 0.001),plotit = FALSE)
+
+# Potencia lambda
+lambda <- bc$x[which.max(bc$y)]
+```
+
+Tal que el resultado es $\lambda = `r lambda`$.
+
+#### Transformación Cox-Box de Nuestro Modelo 
+
+\nocite{greene2003econometric}
+
+Realizamos la transformación de nuestras variables independientes, $PIB_{t}^{\lambda} ~ \text{y} ~ i_{t}^{\lambda};~\forall t=1,2,\dots,244$, y estimamos el modelo descrito al final sección anterior.
+
+```{r include=FALSE}
+datos_modelo$independienteL <- datos_modelo$independiente^{lambda}
+datos_modelo$pibL <- datos_modelo$pib^{lambda}
+datos_modelo$rateL <- datos_modelo$rate^{lambda}
+
+modelo.lambda <- lm(independiente~pibL+rateL, data = datos_modelo)
+modelo.lambda.t <- round(as.numeric(coeftest(modelo.lambda)[,3]), 3)
+modelo.lambda.t.p <- format(as.numeric(coeftest(modelo.lambda)[,4]), scientific = TRUE, digits = 3)
+```
+
+$$`r latex.modelo.m(modelo.lambda, c("FBKF", "PIB^{0.584}", "i^{0.584}"))`$$
+
+`r tabla_parametros(modelo.lambda, 1:3)`
+
+```{r echo=FALSE}
+CI_tabla(modelo.lambda, FALSE)
+```
+
+## Evaluación económica
+
+Los resultados obtenidos con la reespesificación del modelo pasan de manera satisfactoria la evaluación económica, donde el PIB tiene una relación positiva con la FBKF y la tasa de interés tiene una relación negativa con ella.
+
+## Evaluación econométrica
+
+### Coeficiente de Determinación
+
+Así como se hizo en \@ref(coeft), se calcula el $R^{2}$ y el $\bar R^{2}$.
+
+```{r echo=FALSE}
+R2 <- summary(modelo)$r.squared
+bar_R2 <- summary(modelo)$adj.r.squared
+
+data.frame(R2, bar_R2) %>%
+  kbl("pipe", digits = 4, align = c("c", "c"), caption = "Coeficientes de Determinación", col.names = c("$R^{2}$", "$\\ bar R^{2}$"))
+```
+
+El coeficiente de determinación ajustado explica en un 99% las variaciones de la variable dependiente con relación a las independientes. Debido a que este valor es muy cercano a 1, podemos decir que nuestro modelo alto poder explicativo para la FBKF.
+
+### Pruebas de significancia Individual y Conjunta
+
+#### Pruebas de Significancia Individual
+
+Planteamos nuestras hipótesis para cada uno de nuestros parámetros; para $\beta_{2} = 0$, y $\beta_{3}=0$.
+
+$$
+\begin{aligned}
+& H_{0}: \beta_{2} = 0
+& vs &
+& H_{1}: \beta_{2} \ne 0 
+\end{aligned}
+$$
+
+Usando la información de $\hat \beta_{2}$; $\text{t-student} = `r modelo.lambda.t[2]`$ y $\text{P-value} = `r modelo.lambda.t.p[2]`$ de nuestro estadístico; por lo se rechaza la hipótesis nula en favor de la alternativa.
+
+Así mismo, para $\hat \beta_{3}$; $\text{t-student} = `r modelo.lambda.t[3]`$ y $\text{P-value} = `r modelo.lambda.t.p[3]`$ se rechaza la hipótesis nula en favor de la alternativa.
+
+Los nuestros parámetros son estadísticamente relevantes para explicar de forma individual a nuestro modelo.
+
+#### Pruebas de Significancia Conjunta
+
+Así como se realizó en 4.3.1.2, realizaremos nuestro prueba de significancia conjunta; donde buscamos probar las siguientes hipótesis.
+
+$$
+\begin{aligned}
+& H_{o}:
+\begin{matrix}
+\beta_{2} = 0 \\
+\beta_{3} = 0 \\
+\end{matrix}
+& vs &
+& H_{1}:
+\begin{matrix}
+\beta_{2} \ne 0 \\
+{\small y/o} \\
+\beta_{3} \ne 0 \\
+\end{matrix}
+\end{aligned}
+$$
+
+$$\forall~t=1,2,\dots,244$$
+
+Se utiliza el estadístico de prueba $F_{\small (2,241)}$, para calcular el P-value.
+
+```{r echo=FALSE}
+
+modelo.lambda.f <- as.numeric(summary(modelo.lambda)$f)
+modelo.lambda.f.p <- 
+pf(modelo.lambda.f[3], modelo.lambda.f[1], modelo.lambda.f[2], lower.tail = FALSE)
+
+cn <- c('$F_{\\small (2,241)}$', "P-value")
+
+knitr::kable(data.frame(modelo.lambda.f[1], modelo.lambda.f.p), "pipe", 
+             col.names = cn, 
+             align = c("c", "c"),
+             caption = "Estadístico F de Fisher"
+)
+```
+
+Se rechaza la hipótesis nula en favor de la alternativa, nuestros parámetros son estadísticamente significativos, en su conjunto, para explicar a nuestra variable dependiente.
+
+### Pruebas de diagnóstico
+
+#### Prueba de Normalidad
+
+##### Prueba Jarque-Bera
+
+Probamos si el $\text{3}^{\text{er}}$ y $\text{4}^{\text{to}}$ momento muestral de nuestro modelo son 0 y 3 respectivamente, con el estadístico de prueba JB descrito en las pruebas de diagnostico del capítulo anterior \@ref(JBt).
+
+$$
+\begin{aligned}
+& H_{0} : 
+  \begin{matrix}
+S = 0 \\    
+C = 3 
+\end{matrix}
+&& vs &
+& H_{1} : 
+\begin{matrix}
+S \ne 0 \\
+{\small y / o} \\
+C \ne 3 
+\end{matrix}
+\end{aligned}
+$$
+
+```{r include=FALSE}
+modelo.lambda.sigma.MV <- (sum(residuals(modelo.lambda)^2)*(1/244))^{0.5}
+modelo.lambda.sesgo <- sum(residuals(modelo.lambda)^3) * (1/244)
+modelo.lambda.curtosis <- sum(residuals(modelo.lambda)^4) * (1/244)
+modelo.lambda.cs <- modelo.lambda.sesgo / (modelo.lambda.sigma.MV^3)
+modelo.lambda.cc <- modelo.lambda.curtosis / (modelo.lambda.sigma.MV^4)
+
+modelo.lambda.JB <- 244*(((modelo.lambda.cs)^2)/6 + ((modelo.lambda.cc-3)^2)/24)
+modelo.lambda.JB.p <- format(jarque.bera.test(residuals(modelo.lambda))$p.value, scientific = TRUE, digits = 4)
+
+```
+
+El estadístico *JB* de nuestro es
+
+$$
+JB = 244
+\left [ 
+\frac{(
+`r modelo.lambda.cs`
+)^{2}}{6}
++
+\frac{(
+`r modelo.lambda.cc`
+- 3)^{2}}{24}
+\right] = 
+`r round(as.numeric(jarque.bera.test(residuals(modelo.lambda))[1]), digits = 3)`
+$$
+
+Nuestro JB = $\text{`r modelo.lambda.JB`}$ con $\text{GL} = 2$ y un $\text{P-value = `r latex.scientifict(modelo.lambda.JB.p)` }$. Por lo que no podemos rechazar nuestra hipótesis nula, a un nivel de significancia de $\text{\alpha=0.001}$. Los residuales se distribuyen como una función normal.
+
+#### Prueba de Especificación Correcta
+
+##### Prueba RESET
+
+Las estimaciones de nuestro estadístico de prueba $\text{F}_{(K, T-K)}$ se realizarán según las especificaciones indicadas en \@ref(RESET); se estima una regresión auxiliar que nos permite usar un estadístico de prueba para comprobar nuestras hipótesis.
+
+Nuestra regresión auxiliar esta escrita de la siguiente forma:
+
+$$
+FBKF_{t}
+= 
+\beta_{1} 
++ \beta_{2}~PIB_{t}^{\lambda} 
++ \beta_{3}~i_{t}^{\lambda} 
++ \sum_{n}^{4} \alpha_{2}~\widehat {FBKF_{t}^{2}}
++ \nu_{t} 
+$$
+
+Y tal como en la sección \@ref(RESET), usaremos los criterios de información nos permitan seleccionar el numero adecuado de $\alpha_{i}; ~~ i=1,2,\dots, N$ que nos proporcione la información del estadístico de prueba intentando que limite la perdida de grados de libertad.
+
+```{r echo=FALSE}
+# Tabla
+## Reset $\alpha_{2}$
+datos_modelo$lambda.reset.2 <- fitted(modelo.lambda)^2
+modelo.lambda.reset2 <- lm(independiente~pibL+rateL+lambda.reset.2, data = datos_modelo)
+
+CI_tabla(modelo.lambda.reset2, FALSE)
+```
+
+```{r echo=FALSE}
+
+datos_modelo$lambda.reset.2 <- fitted(modelo.lambda)^2
+modelo.lambda.reset2 <- lm(independiente~pibL+rateL+lambda.reset.2, data = datos_modelo)
+
+CI_tabla(modelo.lambda.reset2, FALSE)
+```
+
+```{r echo=FALSE}
+# Tabla
+## Reset $\alpha_{2}$ y $\alpha_{2}$
+
+datos_modelo$lambda.reset.3 <- fitted(modelo.lambda)^3
+modelo.lambda.reset3 <- lm(independiente~pibL+rateL+lambda.reset.2+datos_modelo$lambda.reset.3, data = datos_modelo)
+
+CI_tabla(modelo.lambda.reset3, FALSE)
+```
+
+```{r echo=FALSE}
+# Tabla
+## Reset $\alpha_{2}$ y $\alpha_{2}$
+
+datos_modelo$lambda.reset.4 <- fitted(modelo.lambda)^4
+modelo.lambda.reset4 <- lm(independiente~pibL+rateL+lambda.reset.2+datos_modelo$lambda.reset.3+datos_modelo$lambda.reset.4, data = datos_modelo)
+
+CI_tabla(modelo.lambda.reset4, FALSE)
+```
+
+Utilizando los criterios de información, comparamos nuestros modelos anteriores, para seleccionar aquel que nos permita estimar nuestro estadístico de prueba sin perder confiabilidad
+
+```{r echo=FALSE}
+alphas <- data.frame(
+  Criterios_Informacion_modelo.lambda.reset2[,2],
+  Criterios_Informacion_modelo.lambda.reset3[,2],
+  Criterios_Informacion_modelo.lambda.reset4[,2], 
+  row.names = c("Akaike", "Schwarz", "Hannan-Quinn")
+)
+n <- c("$\\text{Hasta}~ \\alpha_{2}$",
+       "$\\text{Hasta}~ \\alpha_{3}$",
+       "$\\text{Hasta}~ \\alpha_{4}$")
+
+knitr::kable(alphas, "pipe", col.names = n, caption = "Tabla de los Criterios de Información de Nuestro Modelos Auxiliares")
+```
+
+Seleccionamos el modelo que con $\alpha_{n}; n= 2,3,4$ por contrar con los valores más bajos en los criterios de información. 
+
+Nuestra hipótesis son: 
+
+$$
+\begin{aligned}
+& H_{o}:
+\begin{matrix}
+\alpha_{2} = 0 \\
+\alpha_{3} = 0 \\
+\alpha_{4} = 0 \\
+\end{matrix}
+& vs &
+& H_{1}:
+\begin{matrix}
+\alpha_{2} \ne 0 \\
+{\small y/o} \\
+\alpha_{3} \ne 0 \\
+{\small y/o} \\
+\alpha_{4} \ne 0 \\
+\end{matrix}
+\end{aligned}
+$$
+
+```{r echo=FALSE}
+modelo.lambda.reset.f <- as.numeric(reset(modelo.lambda,2:4)$statistic[1])
+modelo.lambda.reset.f.p <- reset(modelo.lambda,2:4)$p.value %>% format(scientific = TRUE, digits = 4) 
+
+modelo.lambda.reset.f.p <- latex.scientifict(modelo.lambda.reset.f.p)
+
+
+knitr::kable(
+  data.frame(modelo.lambda.reset.f, modelo.lambda.reset.f.p),
+  "pipe", 
+  col.names = c("$F_{\\frac{3}{238}}$",
+                "P-value"),
+  caption = "Estadístico de Prueba F")
+```
+
+Se rechaza nuestra hipótesis nula en favor de la alternativa; existe evidencia de que nuestro modelo no esté correctamente especificado. Las causas pueden la exclusión de alguna variable explicativa importante, o que las proxis de nuestro modelo no sean las más adecuadas para explicar a la $FBKF$ en Estados Unidos.
+
+#### Prueba de Multicolinealidad
+
+##### Efecto Tail
+
+Se había dicho en \@ref(Tail), que esta prueba busca medir como el coeficiente de determinación de nuestro modelo estimado es afectado por el coeficiente de determinación de $k; \forall k=1,2,\dots,K$ regresiones auxiliares que
+
+$$
+  R_{Th}^{2} 
+= 
+  R^{2}
+-
+  \sum_{k=2}^{K} (R^{2} - R_{k}^{2})
+$$
+
+Se estiman estas regresiones auxiliares de la variable dependiente contra los k parámetros menos uno de ellos:
+
+$$
+\begin{aligned}
+& Tail_{1}: &
+&{FBKF}_{t}  = 
+\alpha_{1} + \alpha_{2}~PIB_{t}^{\lambda} +\varepsilon_{t} \\
+& Tail_{2}: &
+&{FBKF}_{t} = 
+\alpha_{1} + \alpha_{2}~i_{t}^{\lambda} +\varepsilon_{t} \\
+\end{aligned}
+$$
+
+$$ \forall~t=1,2,\dots,244 $$
+
+```{r echo=FALSE}
+modelo.lambda.tail.pib <- lm(independiente~pibL, data = datos_modelo)
+modelo.lambda.tail.i <- lm(independiente~rateL, data = datos_modelo)
+modelo.lambda.tail.r.square <- round(
+  c(summary(modelo.lambda.tail.pib)$r.square,
+    summary(modelo.lambda.tail.i)$r.square), 3)
+
+name <- c("$R_{2}^{2}$", "$R_{3}^{2}$")
+
+knitr::kable(data.frame(cbind(name, modelo.lambda.tail.r.square)),
+             "pipe",
+             col.names = c("$R_{k}^{2}$", "Valor"),
+             caption = "Lista de las $R_{k}^{2}$")
+```
+
+Al realizar la estimación de $R_{Th}^{2}$, observamos que el valor es cercano a cero, y por tanto, existe evidencia de no multicolinealidad en nuestro modelo.
+
+```{r Valor de la Theil R2 lambda, include=FALSE}
+R2_Th.lambda<- summary(modelo.lambda)$r.square - (
+  summary(modelo.lambda)$r.square - summary(modelo.lambda.tail.pib)$r.square +
+    summary(modelo.lambda)$r.square - summary(modelo.lambda.tail.i)$r.square)
+```
+
+$$
+\begin{aligned}
+R_{Th}^{2} &= `r summary(modelo.lambda)$r.square` \\
+&- 
+\left ( 
+(
+`r summary(modelo.lambda)$r.square`
+ - 
+`r summary(modelo.lambda.tail.pib)$r.square`
+)+(
+`r summary(modelo.lambda)$r.square`
+- 
+`r summary(modelo.lambda.tail.i)$r.square`
+)
+\right ) \\ 
+&= `r R2_Th.lambda`
+\end{aligned}
+$$
+
+##### Factor de Inflación Varianza
+
+El factor de inflación varianza (VIF) una medida que enuncia como la varianza incrementa, en la estimación de mínimos cuadrados ordinarios, por la colinealidad entre nuestras variables:
+
+$$
+VIF = \frac{1}{1-R_{k}^{2}}
+$$
+
+Para calcular el VIF realizamos los mismos calculos que en \@ref(viff)
+
+$$
+\begin{aligned}
+& \text{VIF}_{1}: &
+PIB_{t}^{\lambda}  &= 
+\alpha_{1} + \alpha_{2}~i_{t}^{\lambda} +\varepsilon_{t} \\
+& \text{VIF}_{2}: &
+i_{t}^{\lambda} &= 
+\alpha_{1} + \alpha_{2}~PIB_{t}^{\lambda} +\varepsilon_{t} \\
+\end{aligned}
+$$
+
+$$ \forall~t=1,2,\dots,244 $$
+
+```{r echo=FALSE}
+# Función de R para calcular el VIF
+# vif(modelo)
+
+knitr::kable(data.frame(
+  as.numeric(vif(modelo.lambda))[1],
+  as.numeric(vif(modelo.lambda))[2]
+),
+"pipe",
+row.names = FALSE,
+col.names = c("$R_{\\small VIF_{1}}^{2}$", "$R_{\\small VIF_{2}}^{2}$")
+)
+```
+
+Si el valor es mayor de 10, normalmente para algunos autores 5, se considera que existe multicolinealidad; observamos que los resultados no muestran existencia de multicolinealidad.
+
+#### Prueba de Homocedasticidad
+
+##### Prueba Breush-Pagan-Godfrey
+
+Realizamos la prueba Breush-Pagan-Godfrey, tal como se hizo en \@ref(BPGt); usando una regresión auxiliar que tenga como variable dependiente los residuales al cuadrado, sin cambios en las variables independientes.
+
+$$
+  \hat \varepsilon_{t}^{2}
+=   
+  \alpha_{1}
++
+  \alpha_{2}~PIB_{t}^{\lambda}
++
+  \alpha_ {3}~i_{t}^{\lambda}
++
+  \nu_{t}
+$$
+
+De existir hocedasticidad no se rechazaría la hipótesis nula.
+
+$$
+\begin{aligned}
+& H_{0} : 
+\begin{matrix}  
+\alpha_{2} = 0 \\   
+\alpha_{3} = 0  
+\end{matrix}
+&& vs &
+& H_{1} : 
+\begin{matrix}
+\alpha_{2} \ne 0 \\
+{\small y / o} \\
+\alpha_{3} \ne 0 \\ 
+\end{matrix}    
+\end{aligned}
+$$
+
+```{r include=FALSE}
+modelo.lambda.bptest.f <- as.numeric(bptest(modelo.lambda)[1])
+modelo.lambda.bptest.p <- format(as.numeric(bptest(modelo.lambda)$p.value), scientific =TRUE, digits = 4)
+
+modelo.lambda.bptest.p <- latex.scientifict(modelo.lambda.bptest.p)
+```
+
+El valor de nuestro estadístico de prueba $F_{\small (2,241)} = `r modelo.lambda.bptest.f`$, con un P-value $= `r modelo.lambda.bptest.p`$, por lo que se rechaza la hipótesis nula en favor de la alternativa; nuestro modelo es heterocedastico.
+
+```{r echo=FALSE}
+# Tabla
+knitr::kable(data.frame(modelo.bptest.f,modelo.bptest.p), "pipe",
+             col.names = c("$F_{\\small (2,241)}$",
+                           "P-value"))
+```
+
+#### Prueba de Autocorrelación
+
+##### Prueba Durbin-Watson
+
+Así como en \@ref(dwww), se realizan los mismos cálculos de el estadístico DW. 
+
+$$
+\varepsilon_{t} = \theta_{0} + \theta_{1}~\varepsilon_{t-1} + \nu_{t}
+$$
+$$\forall~t=2,3,\dots,T$$
+
+En donde las hipótesis a probar son la no existencia de autocorrelación de primer orden, que $\theta_{1} = 0$, o en caso contrario la existencia de autocorrelación; que $\theta_{1} \ne 0$.
+
+$$
+H_{0}: \theta_{0} = 0
+~~~~~~
+vs
+~~~~~~
+H_{1}: \theta_{1} \ne 0
+$$
+
+```{r echo=FALSE}
+DW <- as.numeric(dwtest(modelo.lambda)$statistic)
+DW.p <- as.numeric(dwtest(modelo.lambda)$p.value) %>% format(scientifict = TRUE, digits = 4)
+DW.p <- latex.scientifict(DW.p) 
+
+data.frame(DW, DW.p) %>% 
+  kbl(format = "pipe",col.names = c("DW", "P-value"), caption = "Estadístico de Prueba Durwin - Watson")
+```
+
+Debido a nuestro P-value es mayor que el nivel de signficancia de 0.1, rechazamos la hipótesis nula en favor de la alternativa; nuestro modelo no cambia su autocorrelación después de la transformación. 
+
+#### Prueba de Permanencia Estructural
+
+##### Chown Breakpoint
+
+La prueba consiste en realizar dos estimaciones con dos modelos auxiliares, tal como se ejecutó en \@ref(chowbp). esta prueba permite probar que nuestros parámetros no cambian a través del tiempo, o de las observaciones.
+
+De nuestro modelo poblacional:
+
+$$
+`r latex.modelo.p(modelo.lambda, c("FBKF", "PIB^{\\lambda}", "i^{\\lambda}"))`
+$$
+
+Usaremos nuevamente la observación 191, correspondiente al tercer trimestre del año 2007, para mostrar que aunque se realizó una transformación en nuestras variables, el cambio estructural descrito en el primer modelo propuesto no se corregirá de esta forma.
+
+Así como se indicó en la matriz del la sección \@ref(chowbp), podemos realizar una sola regresión auxiliar para indicar probar nuestras hipótesis.
+
+$$
+FBKF_{t} =
+\beta_{1}^{\small {1^{\small er}}} +
+\beta_{2}^{\small {1^{\small er}}}~PIB_{t}^{\lambda} +
+\beta_{3}^{\small {1^{\small er}}}~i_{t}^{\lambda} +
+\beta_{1}^{\small {2^{\small do}}} +
+\beta_{2}^{\small {2^{\small do}}}~PIB_{t}^{\lambda} +
+\beta_{3}^{\small {2^{\small do}}}~i_{t}^{\lambda} +
+\alpha_{t}
+$$
+
+$$\forall~t=1, 2,\dots,244$$
+
+Donde buscamos probar que existe permanencia estructura; donde las diferencias de nuestro parámetros en el primer y segundo periodo son nulas.
+
+$$
+\begin{aligned}
+& H_{\tiny 0}:
+\begin{matrix}
+\beta_{1}^{\small {1^{\small er}}} - \beta_{1}^{\small {2^{\small do}}} = 0 \\
+\beta_{2}^{\small {1^{\small er}}} - \beta_{2}^{\small {2^{\small do}}} = 0 \\
+\beta_{3}^{\small {1^{\small er}}} - \beta_{3}^{\small {2^{\small do}}} = 0 \\
+\end{matrix}
+& vs &
+& H_{\tiny 1}:
+\begin{matrix}
+\beta_{1}^{\small {1^{\small er}}} - \beta_{1}^{\small {2^{\small do}}} \ne 0 \\
+{\tiny {y/o}} \\
+\beta_{2}^{\small {1^{\small er}}} - \beta_{2}^{\small {2^{\small do}}} \ne 0 \\
+{\tiny {y/o}} \\
+\beta_{3}^{\small {1^{\small er}}} - \beta_{3}^{\small {2^{\small do}}} \ne 0 \\
+\end{matrix}
+\end{aligned}
+$$
+
+```{r Calculo de la prueba Chow Lambda, include=FALSE}
+modelo.lambda.chow <- sctest(datos_modelo$independiente~datos_modelo$pibL+datos_modelo$rateL, type = "Chow", point = 191)
+modelo.lambda.chow.f <- as.numeric(modelo.lambda.chow[1])
+modelo.lambda.chow.p <- format(pf(modelo.lambda.chow.f, 3,(244-6), lower.tail = FALSE ), scientific = TRUE, digits = 4)
+
+
+modelo.lambda.chow.p <- latex.scientifict(modelo.lambda.chow.p)
+```
+
+El calculo de nuestro estadístico de prueba $F_{(2, 238)} = `r modelo.lambda.chow.f`$, con un \text{P-value} = `r modelo.lambda.chow.p` nos provee de evidencia para rechazar nuestra hipótesis nula en favor de la alternativa; existe un cambio estructural del periodo descrito.
+
+```{r echo=FALSE}
+knitr::kable(data.frame(modelo.lambda.chow.f, modelo.lambda.chow.p), "pipe",
+             col.names = c("$F_{\\small (2,241)}$",
+                           "P-value"))
+```
+
+\newpage
+
+# Model Final
+
+## Comparación entre los dos modelos
+
+```{r echo=FALSE}
+# Tabla
+## Comparación de los criterios de información
+## para el modelo original y el transformado
+
+alphas <- data.frame(
+  Criterios_Informacion_modelo[,2],
+  Criterios_Informacion_modelo.lambda[,2],
+  row.names = c("Akaike", "Schwarz", "Hannan-Quinn")
+)
+n <- c("CI del Modelo Propuesto",
+       "CI del Modelo Reespecificado")
+
+knitr::kable(alphas, "pipe",
+             col.names = n,
+             align = c("c", "c"),
+             caption = "Criterios de Información del Modelo Propuesto y Reespecificado")
+```
+
+
+```{r include=FALSE}
+betas.modelo <- as.numeric(coef(modelo))
+betas.lambda <- as.vector(coef(modelo.lambda))
+
+t.modelo <- as.vector(coeftest(modelo)[,3])
+t.lambda <- as.vector(coeftest(modelo.lambda)[,3])
+
+t.p.modelo <- as.vector(
+  coeftest(modelo)[,4])
+t.p.lambda <- as.vector(
+  coeftest(modelo.lambda)[,4])
+
+for (i in t.p.modelo){
+  t.p.modelo[which(t.modelo == i)] <- latex.scientifict(i)
+}
+
+for (i in t.p.lambda){
+  t.p.lambda[which(t.modelo == i)] <- latex.scientifict(i)
+}
+
+beta.t <- latex.beta.n(1:3, TRUE)
+cnam <- c("$\\hat\\beta_{k}$","Estimación", "t-_student_", "P-value")
+```
+
+
+```{r echo=FALSE}
+data.frame(beta.t, betas.modelo, t.modelo, t.p.modelo) %>% kable("pipe", algin = c("c", "r", "r", "c"), caption = "Pruebas de Significancia Individual del Modelo Propuesto", col.names = cnam)
+```
+
+
+```{r echo=FALSE}
+data.frame(beta.t, betas.lambda, t.lambda, t.p.lambda) %>% kable("pipe", align = c("c", "r", "r", "c"), caption = "Pruebas de Significancia Individual del Modelo Reespecificado", col.names = cnam)
+```
+
+
+```{r echo=FALSE}
+f <- c(modelo.f[1],modelo.lambda.f[1])
+p <- c(modelo.f.value, modelo.lambda.f.p)
+
+p[1] <- latex.scientifict(p[1])
+
+modelo <- c("Propuesto", "Reespecificado")
+
+data.frame(f, p) %>% kable("pipe", caption = "Pruebas de Significancia Conjunta de los Modelos Estimados", col.names = modelo)
+```
+
+\vfill
+
+# Bibliografía
